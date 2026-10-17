@@ -173,6 +173,13 @@ function renderKeranjang() {
     });
     document.getElementById('total-price').innerText = total;
 }
+window.hapusDariKeranjang = function(id) {
+    const index = cart.findIndex(c => c.id === id);
+    if(index !== -1) {
+        cart.splice(index, 1); // Langsung hapus barang dari nota
+        renderKeranjang();     // Refresh tampilan nota
+    }
+}
 
 window.bayar = async function() {
     const uang = parseInt(document.getElementById('uang-bayar').value) || 0;
