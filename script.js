@@ -166,9 +166,12 @@ function renderKeranjang() {
     cart.forEach(c => {
         const subtotal = c.harga * c.qty;
         total += subtotal;
-        list.innerHTML += `<li class="flex justify-between text-sm py-1 border-b">
+        list.innerHTML += `<li class="flex justify-between items-center text-sm py-2 border-b">
             <span>${c.nama} x${c.qty}</span>
-            <span>Rp ${subtotal}</span>
+            <div class="flex items-center gap-3">
+                <span>Rp ${subtotal}</span>
+                <button onclick="hapusDariKeranjang('${c.id}')" class="bg-red-100 text-red-600 px-2 py-0.5 rounded font-bold hover:bg-red-200">X</button>
+            </div>
         </li>`;
     });
     document.getElementById('total-price').innerText = total;
