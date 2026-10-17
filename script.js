@@ -119,12 +119,41 @@ function renderStok() {
     const list = document.getElementById('stok-list');
     list.innerHTML = '';
     products.forEach((p) => {
-        list.innerHTML += `<li class="py-2 flex justify-between">
-            <span>${p.nama} (Sisa: ${p.stok})</span> 
-            <span class="font-bold">Rp ${p.harga}</span>
-            <button onclick="hapusBarang('${p.id}')" class="text-red-500 text-sm">Hapus</button>
+        list.innerHTML += `<li class="py-3 flex flex-col border-b">
+            <div class="flex justify-between items-center mb-2">
+                <span class="font-bold">${p.nama}</span>
+                <span class="font-bold text-blue-600">Rp ${p.harga}</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-sm text-gray-600">Sisa Stok: <span class="font-bold text-black">${p.stok}</span></span>
+                <div class="flex gap-2">
+                    <button onclick="editStok('${p.id}', ${p.stok})" class="bg-yellow-400 text-black px-3 py-1 rounded text-xs font-bold">Edit Stok</button>
+                    <button onclick="hapusBarang('${p.id}')" class="bg-red-500 text-white px-3 py-1 rounded text-xs font-bold">Hapus</button>
+                </div>
+            </div>
         </li>`;
     });
+}
+
+window.editStok = async function(id, stokLama) {
+    // Munculin popup buat ngetik stok baru
+    const stokBaru = prompt(`Ubah jumlah stok barang ini:\n(Stok saat ini: ${stokLama})`, stokLama);
+    
+    // Kalau kolomnya diisi dan bukan batal
+    if (stokBaru !== null && stokBaru !== "") {
+        const jumlahBaru = parseInt(stokBaru);
+        
+        // Pastikan yang diketik itu angka
+        if (!isNaN(jumlahBaru) && jumlahBaru >= 0) {
+            try {
+                await updateDoc(doc(db, "products", id), { stok: jumlahBaru });
+            } catch (e) {
+                alert("Gagal update stok: " + e.message);
+            }
+        } else {
+            alert("Masukkan angka yang benar!");
+        }
+    }
 }
 
 window.hapusBarang = async function(id) {
