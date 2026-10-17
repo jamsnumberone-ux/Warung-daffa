@@ -15,7 +15,6 @@ const firebaseConfig = {
     measurementId: "G-H0L7FFX2ZT"
 };
 
-// Inisialisasi Firebase & Firestore
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
@@ -24,29 +23,32 @@ let products = [];
 let cart = [];
 let kasbonList = [];
 let transactions = [];
+let kasbonHistory = []; // Tambahan state buat riwayat kasbon
 let currentUser = '';
 
 // --- SISTEM REAL-TIME FIREBASE ---
-// Fungsi ini buat narik data otomatis kalau ada perubahan di database
 function loadDataRealtime() {
-    // Tarik data Produk
     onSnapshot(collection(db, "products"), (snapshot) => {
         products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderStok();
         renderKasir();
     });
 
-    // Tarik data Kasbon
     onSnapshot(collection(db, "kasbon"), (snapshot) => {
         kasbonList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderKasbon();
     });
 
-    // Tarik data Transaksi Laporan
     onSnapshot(collection(db, "transactions"), (snapshot) => {
         transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Urutkan transaksi dari yang terbaru
         transactions.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+        renderLaporan();
+    });
+
+    // Menarik data riwayat aktivitas kasbon
+    onSnapshot(collection(db, "kasbon_history"), (snapshot) => {
+        kasbonHistory = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        kasbonHistory.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
         renderLaporan();
     });
 }
@@ -77,7 +79,6 @@ function berhasilLogin() {
         menu.style.display = currentUser === 'admin' ? 'block' : 'none';
     });
 
-    // Mulai narik data dari Firebase
     loadDataRealtime();
     window.showTab('kasir');
 }
@@ -176,11 +177,12 @@ function renderKeranjang() {
     });
     document.getElementById('total-price').innerText = total;
 }
+
 window.hapusDariKeranjang = function(id) {
     const index = cart.findIndex(c => c.id === id);
     if(index !== -1) {
-        cart.splice(index, 1); // Langsung hapus barang dari nota
-        renderKeranjang();     // Refresh tampilan nota
+        cart.splice(index, 1);
+        renderKeranjang();
     }
 }
 
@@ -192,23 +194,19 @@ window.bayar = async function() {
     if(uang < total) return alert('Uang bayar kurang!');
 
     try {
-        // 1. Kurangi stok di database
         for (const c of cart) {
             const p = products.find(prod => prod.id === c.id);
             const sisaStok = p.stok - c.qty;
             await updateDoc(doc(db, "products", c.id), { stok: sisaStok });
         }
 
-        // 2. Catat Transaksi Laporan
         await addDoc(collection(db, "transactions"), { 
-            tanggal: new Date().toISOString(), // Simpan format standar
+            tanggal: new Date().toISOString(),
             tanggal_tampil: new Date().toLocaleString(),
             total: total 
         });
 
         alert(`Berhasil dibayar! Kembalian: Rp ${uang - total}`);
-        
-        // Reset Keranjang
         cart = [];
         document.getElementById('uang-bayar').value = '';
         renderKeranjang();
@@ -229,6 +227,16 @@ window.tambahKasbon = async function() {
                 sisaUtang: jumlah, 
                 tanggal: new Date().toLocaleDateString() 
             });
+            
+            // Catat Riwayat Ngutang Baru
+            await addDoc(collection(db, "kasbon_history"), {
+                nama: nama,
+                tipe: "Ngutang Baru",
+                nominal: jumlah,
+                tanggal: new Date().toISOString(),
+                tanggal_tampil: new Date().toLocaleString()
+            });
+
             document.getElementById('nama-ngutang').value = '';
             document.getElementById('jumlah-ngutang').value = '';
         } catch (e) {
@@ -263,28 +271,56 @@ window.cicilUtang = async function(id) {
         
         try {
             if(sisa <= 0) {
-                // Lunas, hapus dari database
                 await deleteDoc(doc(db, "kasbon", id));
                 alert(`${target.nama} Lunas!`);
             } else {
-                // Update sisa utang
                 await updateDoc(doc(db, "kasbon", id), { sisaUtang: sisa });
                 alert(`Sisa utang ${target.nama} tinggal Rp ${sisa}`);
             }
+
+            // Catat Riwayat Bayar Cicilan
+            await addDoc(collection(db, "kasbon_history"), {
+                nama: target.nama,
+                tipe: "Bayar Cicilan",
+                nominal: nominal,
+                tanggal: new Date().toISOString(),
+                tanggal_tampil: new Date().toLocaleString()
+            });
+            
         } catch (e) {
             alert("Gagal mengupdate kasbon: " + e.message);
         }
     }
 }
 
-// --- FITUR LAPORAN ---
+// --- FITUR LAPORAN GABUNGAN ---
 function renderLaporan() {
-    const list = document.getElementById('laporan-list');
-    list.innerHTML = '';
-    transactions.forEach(t => {
-        list.innerHTML += `<li class="py-2 flex justify-between border-b text-sm">
-            <span>${t.tanggal_tampil || t.tanggal}</span>
-            <span class="font-bold text-green-600">+ Rp ${t.total}</span>
-        </li>`;
-    });
+    // 1. Render Penjualan Tunai
+    const listTransaksi = document.getElementById('laporan-list');
+    if (listTransaksi) {
+        listTransaksi.innerHTML = '';
+        transactions.forEach(t => {
+            listTransaksi.innerHTML += `<li class="py-2 flex justify-between border-b text-sm">
+                <span>${t.tanggal_tampil || t.tanggal}</span>
+                <span class="font-bold text-green-600">+ Rp ${t.total}</span>
+            </li>`;
+        });
+    }
+
+    // 2. Render Riwayat Kasbon
+    const listKasbon = document.getElementById('laporan-kasbon-list');
+    if (listKasbon) {
+        listKasbon.innerHTML = '';
+        kasbonHistory.forEach(h => {
+            const color = h.tipe === 'Ngutang Baru' ? 'text-red-500' : 'text-green-500';
+            const sign = h.tipe === 'Ngutang Baru' ? '-' : '+';
+            listKasbon.innerHTML += `<li class="py-2 flex flex-col border-b text-sm">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold">${h.nama} <span class="text-xs font-normal text-gray-500 px-1 rounded ${h.tipe === 'Ngutang Baru' ? 'bg-red-100' : 'bg-green-100'}">${h.tipe}</span></span>
+                    <span class="font-bold ${color}">${sign} Rp ${h.nominal}</span>
+                </div>
+                <span class="text-xs text-gray-500 mt-1">${h.tanggal_tampil || h.tanggal}</span>
+            </li>`;
+        });
+    }
 }
