@@ -1,13 +1,58 @@
-// --- DATABASE LOKAL SEMENTARA ---
-// Biar langsung jalan di GitHub tanpa setup server rumit, kita pakai LocalStorage
-let products = JSON.parse(localStorage.getItem('produk_daffa')) || [];
+// --- IMPORT FIREBASE MODULAR ---
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { 
+    getFirestore, collection, addDoc, onSnapshot, updateDoc, deleteDoc, doc 
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+// --- KONFIGURASI FIREBASE LU ---
+const firebaseConfig = {
+    apiKey: "AIzaSyA29SSjNgg2HfTZxlWJjfZmLyj5r3MOqgg",
+    authDomain: "warung-daffa.firebaseapp.com",
+    projectId: "warung-daffa",
+    storageBucket: "warung-daffa.firebasestorage.app",
+    messagingSenderId: "577925837902",
+    appId: "1:577925837902:web:106e1e5fbccbbd39467f1f",
+    measurementId: "G-H0L7FFX2ZT"
+};
+
+// Inisialisasi Firebase & Firestore
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// --- STATE LOKAL ---
+let products = [];
 let cart = [];
-let kasbonList = JSON.parse(localStorage.getItem('kasbon_daffa')) || [];
-let transactions = JSON.parse(localStorage.getItem('transaksi_daffa')) || [];
+let kasbonList = [];
+let transactions = [];
 let currentUser = '';
 
+// --- SISTEM REAL-TIME FIREBASE ---
+// Fungsi ini buat narik data otomatis kalau ada perubahan di database
+function loadDataRealtime() {
+    // Tarik data Produk
+    onSnapshot(collection(db, "products"), (snapshot) => {
+        products = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderStok();
+        renderKasir();
+    });
+
+    // Tarik data Kasbon
+    onSnapshot(collection(db, "kasbon"), (snapshot) => {
+        kasbonList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderKasbon();
+    });
+
+    // Tarik data Transaksi Laporan
+    onSnapshot(collection(db, "transactions"), (snapshot) => {
+        transactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Urutkan transaksi dari yang terbaru
+        transactions.sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
+        renderLaporan();
+    });
+}
+
 // --- SISTEM LOGIN ---
-function login() {
+window.login = function() {
     const user = document.getElementById('username').value;
     const pass = document.getElementById('password').value;
 
@@ -27,20 +72,17 @@ function berhasilLogin() {
     document.getElementById('main-app').classList.remove('hidden');
     document.getElementById('user-role').innerText = currentUser;
     
-    // Sembunyikan menu admin kalau yang login staff
     const adminMenus = document.querySelectorAll('.admin-only');
     adminMenus.forEach(menu => {
         menu.style.display = currentUser === 'admin' ? 'block' : 'none';
     });
 
-    showTab('kasir');
-    renderStok();
-    renderKasir();
-    renderKasbon();
-    renderLaporan();
+    // Mulai narik data dari Firebase
+    loadDataRealtime();
+    window.showTab('kasir');
 }
 
-function logout() {
+window.logout = function() {
     currentUser = '';
     document.getElementById('main-app').classList.add('hidden');
     document.getElementById('login-page').classList.remove('hidden');
@@ -49,45 +91,45 @@ function logout() {
 }
 
 // --- NAVIGASI TAB ---
-function showTab(tabName) {
+window.showTab = function(tabName) {
     document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
     document.getElementById('tab-' + tabName).classList.remove('hidden');
 }
 
 // --- FITUR STOK BARANG ---
-function tambahBarang() {
+window.tambahBarang = async function() {
     const nama = document.getElementById('nama-barang').value;
     const harga = parseInt(document.getElementById('harga-barang').value);
     const stok = parseInt(document.getElementById('stok-barang').value);
 
     if(nama && harga && stok) {
-        products.push({ id: Date.now(), nama, harga, stok });
-        simpanData();
-        renderStok();
-        renderKasir();
-        document.getElementById('nama-barang').value = '';
-        document.getElementById('harga-barang').value = '';
-        document.getElementById('stok-barang').value = '';
+        try {
+            await addDoc(collection(db, "products"), { nama, harga, stok });
+            document.getElementById('nama-barang').value = '';
+            document.getElementById('harga-barang').value = '';
+            document.getElementById('stok-barang').value = '';
+        } catch (e) {
+            alert("Gagal menambah barang: " + e.message);
+        }
     }
 }
 
 function renderStok() {
     const list = document.getElementById('stok-list');
     list.innerHTML = '';
-    products.forEach((p, index) => {
+    products.forEach((p) => {
         list.innerHTML += `<li class="py-2 flex justify-between">
             <span>${p.nama} (Sisa: ${p.stok})</span> 
             <span class="font-bold">Rp ${p.harga}</span>
-            <button onclick="hapusBarang(${index})" class="text-red-500 text-sm">Hapus</button>
+            <button onclick="hapusBarang('${p.id}')" class="text-red-500 text-sm">Hapus</button>
         </li>`;
     });
 }
 
-function hapusBarang(index) {
-    products.splice(index, 1);
-    simpanData();
-    renderStok();
-    renderKasir();
+window.hapusBarang = async function(id) {
+    if(confirm("Yakin ingin menghapus barang ini?")) {
+        await deleteDoc(doc(db, "products", id));
+    }
 }
 
 // --- FITUR KASIR ---
@@ -97,7 +139,7 @@ function renderKasir() {
     products.forEach(p => {
         const bg = p.stok > 0 ? 'bg-blue-50 cursor-pointer hover:bg-blue-100' : 'bg-red-50 opacity-50';
         list.innerHTML += `
-            <div onclick="${p.stok > 0 ? `masukKeranjang(${p.id})` : ''}" class="${bg} p-3 rounded border text-center transition">
+            <div onclick="${p.stok > 0 ? `masukKeranjang('${p.id}')` : ''}" class="${bg} p-3 rounded border text-center transition">
                 <div class="font-bold">${p.nama}</div>
                 <div class="text-blue-600">Rp ${p.harga}</div>
                 <div class="text-sm text-gray-500">Stok: ${p.stok}</div>
@@ -105,7 +147,7 @@ function renderKasir() {
     });
 }
 
-function masukKeranjang(id) {
+window.masukKeranjang = function(id) {
     const produk = products.find(p => p.id === id);
     const itemDiKeranjang = cart.find(c => c.id === id);
 
@@ -132,44 +174,56 @@ function renderKeranjang() {
     document.getElementById('total-price').innerText = total;
 }
 
-function bayar() {
+window.bayar = async function() {
     const uang = parseInt(document.getElementById('uang-bayar').value) || 0;
     const total = parseInt(document.getElementById('total-price').innerText);
     
     if(cart.length === 0) return alert('Belum ada barang!');
     if(uang < total) return alert('Uang bayar kurang!');
 
-    // Kurangi stok
-    cart.forEach(c => {
-        const p = products.find(prod => prod.id === c.id);
-        p.stok -= c.qty;
-    });
+    try {
+        // 1. Kurangi stok di database
+        for (const c of cart) {
+            const p = products.find(prod => prod.id === c.id);
+            const sisaStok = p.stok - c.qty;
+            await updateDoc(doc(db, "products", c.id), { stok: sisaStok });
+        }
 
-    // Catat Laporan
-    transactions.push({ tanggal: new Date().toLocaleString(), total: total });
-    
-    simpanData();
-    alert(`Berhasil dibayar! Kembalian: Rp ${uang - total}`);
-    
-    cart = [];
-    document.getElementById('uang-bayar').value = '';
-    renderKeranjang();
-    renderKasir();
-    renderStok();
-    renderLaporan();
+        // 2. Catat Transaksi Laporan
+        await addDoc(collection(db, "transactions"), { 
+            tanggal: new Date().toISOString(), // Simpan format standar
+            tanggal_tampil: new Date().toLocaleString(),
+            total: total 
+        });
+
+        alert(`Berhasil dibayar! Kembalian: Rp ${uang - total}`);
+        
+        // Reset Keranjang
+        cart = [];
+        document.getElementById('uang-bayar').value = '';
+        renderKeranjang();
+    } catch (e) {
+        alert("Gagal memproses pembayaran: " + e.message);
+    }
 }
 
 // --- FITUR KASBON (BISA CICIL) ---
-function tambahKasbon() {
+window.tambahKasbon = async function() {
     const nama = document.getElementById('nama-ngutang').value;
     const jumlah = parseInt(document.getElementById('jumlah-ngutang').value);
     
     if(nama && jumlah) {
-        kasbonList.push({ id: Date.now(), nama, sisaUtang: jumlah, tanggal: new Date().toLocaleDateString() });
-        simpanData();
-        renderKasbon();
-        document.getElementById('nama-ngutang').value = '';
-        document.getElementById('jumlah-ngutang').value = '';
+        try {
+            await addDoc(collection(db, "kasbon"), { 
+                nama: nama, 
+                sisaUtang: jumlah, 
+                tanggal: new Date().toLocaleDateString() 
+            });
+            document.getElementById('nama-ngutang').value = '';
+            document.getElementById('jumlah-ngutang').value = '';
+        } catch (e) {
+            alert("Gagal mencatat kasbon: " + e.message);
+        }
     }
 }
 
@@ -184,26 +238,32 @@ function renderKasbon() {
             </div>
             <div class="mt-2 sm:mt-0 flex gap-2">
                 <input type="number" id="cicil-${k.id}" placeholder="Jml Cicil" class="border p-1 w-24 text-sm rounded">
-                <button onclick="cicilUtang(${k.id})" class="bg-green-500 text-white px-2 py-1 rounded text-sm">Bayar</button>
+                <button onclick="cicilUtang('${k.id}')" class="bg-green-500 text-white px-2 py-1 rounded text-sm">Bayar</button>
             </div>
         </li>`;
     });
 }
 
-function cicilUtang(id) {
+window.cicilUtang = async function(id) {
     const nominal = parseInt(document.getElementById(`cicil-${id}`).value);
-    const index = kasbonList.findIndex(k => k.id === id);
+    const target = kasbonList.find(k => k.id === id);
     
-    if(nominal && nominal > 0) {
-        kasbonList[index].sisaUtang -= nominal;
-        if(kasbonList[index].sisaUtang <= 0) {
-            alert(`${kasbonList[index].nama} Lunas!`);
-            kasbonList.splice(index, 1);
-        } else {
-            alert(`Sisa utang ${kasbonList[index].nama} tinggal Rp ${kasbonList[index].sisaUtang}`);
+    if(nominal && nominal > 0 && target) {
+        const sisa = target.sisaUtang - nominal;
+        
+        try {
+            if(sisa <= 0) {
+                // Lunas, hapus dari database
+                await deleteDoc(doc(db, "kasbon", id));
+                alert(`${target.nama} Lunas!`);
+            } else {
+                // Update sisa utang
+                await updateDoc(doc(db, "kasbon", id), { sisaUtang: sisa });
+                alert(`Sisa utang ${target.nama} tinggal Rp ${sisa}`);
+            }
+        } catch (e) {
+            alert("Gagal mengupdate kasbon: " + e.message);
         }
-        simpanData();
-        renderKasbon();
     }
 }
 
@@ -213,15 +273,8 @@ function renderLaporan() {
     list.innerHTML = '';
     transactions.forEach(t => {
         list.innerHTML += `<li class="py-2 flex justify-between border-b text-sm">
-            <span>${t.tanggal}</span>
+            <span>${t.tanggal_tampil || t.tanggal}</span>
             <span class="font-bold text-green-600">+ Rp ${t.total}</span>
         </li>`;
     });
-}
-
-// --- PENYIMPANAN ---
-function simpanData() {
-    localStorage.setItem('produk_daffa', JSON.stringify(products));
-    localStorage.setItem('kasbon_daffa', JSON.stringify(kasbonList));
-    localStorage.setItem('transaksi_daffa', JSON.stringify(transactions));
 }
