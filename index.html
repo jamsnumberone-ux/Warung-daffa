@@ -86,15 +86,21 @@
 
             <!-- Tab Laporan -->
             <div id="tab-laporan" class="tab-content hidden">
-                <h2 class="text-xl font-bold mb-4">Laporan Penjualan</h2>
-                <div class="bg-white p-4 rounded shadow">
-                    <p class="text-gray-600 mb-4">Riwayat transaksi tersimpan otomatis di sistem.</p>
-                    <ul id="laporan-list" class="divide-y"></ul>
+                <h2 class="text-xl font-bold mb-4">Laporan & Riwayat</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Laporan Penjualan Tunai -->
+                    <div class="bg-white p-4 rounded shadow">
+                        <h3 class="font-bold border-b pb-2 mb-2">Penjualan Tunai</h3>
+                        <ul id="laporan-list" class="divide-y h-96 overflow-y-auto"></ul>
+                    </div>
+                    <!-- Riwayat Kasbon -->
+                    <div class="bg-white p-4 rounded shadow">
+                        <h3 class="font-bold border-b pb-2 mb-2 text-red-600">Riwayat Kasbon</h3>
+                        <p class="text-xs text-gray-500 mb-2">Mencatat siapa yang ngutang dan siapa yang nyicil.</p>
+                        <ul id="laporan-kasbon-list" class="divide-y h-96 overflow-y-auto"></ul>
+                    </div>
                 </div>
             </div>
-
-        </div>
-    </div>
 
     <!-- Hubungkan ke file JavaScript -->
     <script type="module" src="script.js"></script>
